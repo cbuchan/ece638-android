@@ -1,3 +1,5 @@
+package com.example.android.beam;
+
 /*
  * Copyright (C) 2011 The Android Open Source Project
  *
@@ -14,8 +16,8 @@
  * limitations under the License.
  */
 
-package com.example.android.beam;
-
+import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Intent;
 import android.nfc.NdefMessage;
@@ -24,6 +26,7 @@ import android.nfc.NfcAdapter;
 import android.nfc.NfcAdapter.CreateNdefMessageCallback;
 import android.nfc.NfcAdapter.OnNdefPushCompleteCallback;
 import android.nfc.NfcEvent;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -39,6 +42,8 @@ import android.widget.Toast;
 import java.nio.charset.Charset;
 
 
+@TargetApi(Build.VERSION_CODES.ICE_CREAM_SANDWICH)
+@SuppressLint("NewApi")
 public class Beam extends Activity implements CreateNdefMessageCallback,
         OnNdefPushCompleteCallback {
     NfcAdapter mNfcAdapter;
@@ -68,11 +73,12 @@ public class Beam extends Activity implements CreateNdefMessageCallback,
     /**
      * Implementation for the CreateNdefMessageCallback interface
      */
-    @Override
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
+	@Override
     public NdefMessage createNdefMessage(NfcEvent event) {
         Time time = new Time();
         time.setToNow();
-        String text = ("I'm a Bus!\n\n" +
+        String text = ("This is the Bus!\n\n" +
                 "Beam Time: " + time.format("%H:%M:%S"));
         NdefMessage msg = new NdefMessage(NdefRecord.createMime(
                 "application/com.example.android.beam", text.getBytes())
@@ -129,7 +135,8 @@ public class Beam extends Activity implements CreateNdefMessageCallback,
     /**
      * Parses the NDEF Message from the intent and prints to the TextView
      */
-    void processIntent(Intent intent) {
+    @TargetApi(Build.VERSION_CODES.GINGERBREAD)
+	void processIntent(Intent intent) {
         Parcelable[] rawMsgs = intent.getParcelableArrayExtra(
                 NfcAdapter.EXTRA_NDEF_MESSAGES);
         // only one message sent during the beam
@@ -161,3 +168,4 @@ public class Beam extends Activity implements CreateNdefMessageCallback,
         }
     }
 }
+
