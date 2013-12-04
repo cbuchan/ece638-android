@@ -30,6 +30,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
+import android.util.Log;
 import android.view.Menu;
 import android.widget.TextView;
 
@@ -76,12 +77,14 @@ public class MainActivity extends Activity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		setContentView(R.layout.activity_main);
+		setContentView(R.layout.main);
+		
+		Log.i("BEAM", "Main Activity");
 
 		String path = Environment.getExternalStorageDirectory().toString()
 				+ "/gpx/course.gpx";
 
-		TextView textInfo = (TextView) findViewById(R.id.hello_world);
+		TextView textInfo = (TextView) findViewById(R.id.textView);
 		String info = "";
 
 		File gpxFile = new File(path);
@@ -114,7 +117,7 @@ public class MainActivity extends Activity {
 
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
-		getMenuInflater().inflate(R.menu.main, menu);
+		getMenuInflater().inflate(R.menu.options, menu);
 		return true;
 	}
 
