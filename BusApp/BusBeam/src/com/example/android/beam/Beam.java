@@ -46,6 +46,7 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -53,6 +54,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.location.Criteria;
 import android.location.Location;
+import android.location.LocationListener;
 import android.location.LocationManager;
 import android.nfc.NdefMessage;
 import android.nfc.NdefRecord;
@@ -75,21 +77,23 @@ import android.view.MenuItem;
 import android.widget.TextView;
 import android.widget.Toast;
 
-
-
 public class Beam extends Activity implements CreateNdefMessageCallback,
-        OnNdefPushCompleteCallback {
-    NfcAdapter mNfcAdapter;
-    private LocationManager locationManager;
-    private String provider;
-    TextView mInfoText;
-    private static final int MESSAGE_SENT = 1;
-    private static final String USER_APP_PREF_DATA= "com.example.android.userID";
-    private static final String KEY = "com.example.android.beam.users";
-	 static final String PROVIDER_NAME = LocationManager.GPS_PROVIDER;
+		OnNdefPushCompleteCallback, LocationListener {
+	NfcAdapter mNfcAdapter;
+	TextView mInfoText;
 
-    private LocationManager mLocationManager;
+	private static final int MESSAGE_SENT = 1;
+	private static final String USER_APP_PREF_DATA = "com.example.android.userID";
+	private static final String KEY = "com.example.android.beam.users";
+	static final String PROVIDER_NAME = LocationManager.GPS_PROVIDER;
+	private static final long MINIMUM_DISTANCE_CHANGE_FOR_UPDATES = 1; // in
+																		// Meters
+	private static final long MINIMUM_TIME_BETWEEN_UPDATES = 1; // in
+																// Milliseconds
+
+	private LocationManager mLocationManager;
 	private PendingIntent mPendingIntent;
+	private Location currentLocation;
 
 	private final String LATITUDE = "latitude";
 	private final String LONGITUDE = "longitude";
@@ -124,20 +128,16 @@ public class Beam extends Activity implements CreateNdefMessageCallback,
 		}
 	};
 
-    
-    
-    
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.main);
-    	StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+	public void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.main);
+		StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder()
+				.permitAll().build();
 
-    	StrictMode.setThreadPolicy(policy);
-    	
-    	
-    	
+		StrictMode.setThreadPolicy(policy);
+
 		String path = Environment.getExternalStorageDirectory().toString()
-				+ "/gpx/course.gpx";
+				+ "/gpx/61S.gpx";
 
 		TextView textInfo = (TextView) findViewById(R.id.textView);
 		String info = "";
@@ -166,31 +166,32 @@ public class Beam extends Activity implements CreateNdefMessageCallback,
 			handler.sendMessageDelayed(msg, 1000);
 		}
 
-		textInfo.setText(info);    	
-        SharedPreferences settings = getApplicationContext().getSharedPreferences(USER_APP_PREF_DATA, 0);
-        
-        SharedPreferences.Editor editor = settings.edit();
-        HashSet<String> users = new HashSet<String>();
-        editor.putStringSet(KEY,users);
+		textInfo.setText(info);
+		SharedPreferences settings = getApplicationContext()
+				.getSharedPreferences(USER_APP_PREF_DATA, 0);
 
-        mInfoText = (TextView) findViewById(R.id.textView);
-        // Check for available NFC Adapter
-        mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
-        if (mNfcAdapter == null) {
-            mInfoText = (TextView) findViewById(R.id.textView);
-            mInfoText.setText("NFC is not available on this device.");
-        } else {
-            // Register callback to set NDEF message
-            mNfcAdapter.setNdefPushMessageCallback(this, this);
-            // Register callback to listen for message-sent success
-            mNfcAdapter.setOnNdefPushCompleteCallback(this, this);
-        }
-    }
-    
-    private void setupMockLocationProvider() {
-    	mLocationManager =(LocationManager) getSystemService(Context.LOCATION_SERVICE);
-    			
-		if (mLocationManager.getProvider(PROVIDER_NAME) != null){
+		SharedPreferences.Editor editor = settings.edit();
+		HashSet<String> users = new HashSet<String>();
+		editor.putStringSet(KEY, users);
+
+		mInfoText = (TextView) findViewById(R.id.textView);
+		// Check for available NFC Adapter
+		mNfcAdapter = NfcAdapter.getDefaultAdapter(this);
+		if (mNfcAdapter == null) {
+			mInfoText = (TextView) findViewById(R.id.textView);
+			mInfoText.setText("NFC is not available on this device.");
+		} else {
+			// Register callback to set NDEF message
+			mNfcAdapter.setNdefPushMessageCallback(this, this);
+			// Register callback to listen for message-sent success
+			mNfcAdapter.setOnNdefPushCompleteCallback(this, this);
+		}
+	}
+
+	private void setupMockLocationProvider() {
+		mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+
+		if (mLocationManager.getProvider(PROVIDER_NAME) != null) {
 			Log.e("BEAM", mLocationManager.getAllProviders().toString());
 			mLocationManager.removeTestProvider(PROVIDER_NAME);
 		}
@@ -205,6 +206,9 @@ public class Beam extends Activity implements CreateNdefMessageCallback,
 				Criteria.POWER_MEDIUM, // powerRequirement
 				Criteria.ACCURACY_FINE); // accuracy
 
+		mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
+				MINIMUM_TIME_BETWEEN_UPDATES,
+				MINIMUM_DISTANCE_CHANGE_FOR_UPDATES, this);
 	}
 
 	/**
@@ -221,9 +225,8 @@ public class Beam extends Activity implements CreateNdefMessageCallback,
 	 */
 	private void sendLocation(final double latitude, final double longitude,
 			final Object observer) {
-		Thread locationUpdater = new Thread(){
+		Thread locationUpdater = new Thread() {
 			@Override
-
 			public void run() {
 				Location loc = new Location(PROVIDER_NAME);
 				loc.setLatitude(latitude);
@@ -262,7 +265,6 @@ public class Beam extends Activity implements CreateNdefMessageCallback,
 			}
 		};
 		locationUpdater.start();
-	
 
 	}
 
@@ -328,215 +330,298 @@ public class Beam extends Activity implements CreateNdefMessageCallback,
 		return list;
 	}
 
+	/**
+	 * Implementation for the CreateNdefMessageCallback interface
+	 */
+	@SuppressLint("NewApi")
+	@Override
+	public NdefMessage createNdefMessage(NfcEvent event) {
+		Time time = new Time();
+		time.setToNow();
+		String text = ("This is the Bus, Static Bus Information will go here!\n\n"
+				+ "Beam Time: " + time.format("%H:%M:%S"));
+		NdefMessage msg = new NdefMessage(NdefRecord.createMime(
+				"application/com.example.android.beam", text.getBytes())
+		/**
+		 * The Android Application Record (AAR) is commented out. When a device
+		 * receives a push with an AAR in it, the application specified in the
+		 * AAR is guaranteed to run. The AAR overrides the tag dispatch system.
+		 * You can add it back in to guarantee that this activity starts when
+		 * receiving a beamed message. For now, this code uses the tag dispatch
+		 * system.
+		 */
+		// ,NdefRecord.createApplicationRecord("com.example.android.beam")
+		);
+		return msg;
+	}
 
+	/**
+	 * Implementation for the OnNdefPushCompleteCallback interface
+	 */
+	@Override
+	public void onNdefPushComplete(NfcEvent arg0) {
+		// A handler is needed to send messages to the activity when this
+		// callback occurs, because it happens from a binder thread
+		mHandler.obtainMessage(MESSAGE_SENT).sendToTarget();
+	}
 
+	/** This handler receives a message from onNdefPushComplete */
+	private final Handler mHandler = new Handler() {
+		@Override
+		public void handleMessage(Message msg) {
+			switch (msg.what) {
+			case MESSAGE_SENT:
+				Toast.makeText(getApplicationContext(), "Message sent!",
+						Toast.LENGTH_LONG).show();
+				break;
+			}
+		}
+	};
 
+	@Override
+	public void onResume() {
+		super.onResume();
+		// Check to see that the Activity started due to an Android Beam
+		if (NfcAdapter.ACTION_NDEF_DISCOVERED.equals(getIntent().getAction())) {
+			processIntent(getIntent());
+		}
+	}
 
-    /**
-     * Implementation for the CreateNdefMessageCallback interface
-     */
-    @Override
-    public NdefMessage createNdefMessage(NfcEvent event) {
-        Time time = new Time();
-        time.setToNow();
-        String text = ("This is the Bus, Static Bus Information will go here!\n\n" +
-                "Beam Time: " + time.format("%H:%M:%S"));
-        NdefMessage msg = new NdefMessage(NdefRecord.createMime(
-                "application/com.example.android.beam", text.getBytes())
-         /**
-          * The Android Application Record (AAR) is commented out. When a device
-          * receives a push with an AAR in it, the application specified in the AAR
-          * is guaranteed to run. The AAR overrides the tag dispatch system.
-          * You can add it back in to guarantee that this
-          * activity starts when receiving a beamed message. For now, this code
-          * uses the tag dispatch system.
-          */
-          //,NdefRecord.createApplicationRecord("com.example.android.beam")
-        );
-        return msg;
-    }
+	@Override
+	public void onNewIntent(Intent intent) {
+		// onResume gets called after this to handle the intent
+		setIntent(intent);
+	}
 
-    /**
-     * Implementation for the OnNdefPushCompleteCallback interface
-     */
-    @Override
-    public void onNdefPushComplete(NfcEvent arg0) {
-        // A handler is needed to send messages to the activity when this
-        // callback occurs, because it happens from a binder thread
-        mHandler.obtainMessage(MESSAGE_SENT).sendToTarget();
-    }
+	/**
+	 * Parses the NDEF Message from the intent and prints to the TextView
+	 */
+	void processIntent(Intent intent) {
+		Parcelable[] rawMsgs = intent
+				.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES);
+		Log.i("Test", "parse");
+		// only one message sent during the beam
+		NdefMessage msg = (NdefMessage) rawMsgs[0];
 
-    /** This handler receives a message from onNdefPushComplete */
-    private final Handler mHandler = new Handler() {
-        @Override
-        public void handleMessage(Message msg) {
-            switch (msg.what) {
-            case MESSAGE_SENT:
-                Toast.makeText(getApplicationContext(), "Message sent!", Toast.LENGTH_LONG).show();
-                break;
-            }
-        }
-    };
+		String ndefinput = new String(msg.getRecords()[0].getPayload());
+		// Getting location when receiving NFC content
+		// LocationManager mLocationManager = new LocationManager();
 
-    @Override
-    public void onResume() {
-        super.onResume();
-        // Check to see that the Activity started due to an Android Beam
-        if (NfcAdapter.ACTION_NDEF_DISCOVERED.equals(getIntent().getAction())) {
-            processIntent(getIntent());
-        }
-    }
+		Passenger pass = new Passenger();
+		pass.setId(ndefinput);
+		Time time = new Time();
+		time.setToNow();
+		pass.setTime(time.format("%H:%M:%S"));
 
-    @Override
-    public void onNewIntent(Intent intent) {
-        // onResume gets called after this to handle the intent
-        setIntent(intent);
-    }
+		SharedPreferences settings = getApplicationContext()
+				.getSharedPreferences(USER_APP_PREF_DATA, 0);
+		HashSet<String> users = (HashSet<String>) settings.getStringSet(KEY,
+				null);
 
-    /**
-     * Parses the NDEF Message from the intent and prints to the TextView
-     */
-    void processIntent(Intent intent) {
-        Parcelable[] rawMsgs = intent.getParcelableArrayExtra(
-                NfcAdapter.EXTRA_NDEF_MESSAGES);
-        Log.i("Test", "parse");
-        // only one message sent during the beam
-        NdefMessage msg = (NdefMessage) rawMsgs[0];
+		mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+		// Define the criteria how to select the location provider -> use
+		// default
+		// Location location =
+		// mLocationManager.getLastKnownLocation(PROVIDER_NAME);
+		// Location location = currentLocation;
+		double lat = Double.parseDouble(settings.getString(LATITUDE, ""));
+		double lon = Double.parseDouble(settings.getString(LONGITUDE, ""));
+		Location location = new Location(PROVIDER_NAME);
+		location.setLatitude(lat);
+		location.setLongitude(lon);
 
-        String ndefinput = new String(msg.getRecords()[0].getPayload());
-        //Getting location when receiving NFC content
-        //LocationManager mLocationManager = new LocationManager();
-        
-        Passenger pass = new Passenger();
-        pass.setId(ndefinput);
-        Time time = new Time();
-        time.setToNow();
-        pass.setTime(time.format("%H:%M:%S"));
-        
-        SharedPreferences settings = getApplicationContext().getSharedPreferences(USER_APP_PREF_DATA, 0);
-        HashSet<String> users = (HashSet<String>) settings.getStringSet(KEY, null);
-        
-        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        // Define the criteria how to select the location provider -> use
-        // default
-        Criteria criteria = new Criteria();
-        provider = locationManager.getBestProvider(criteria, false);
-        Location location = locationManager.getLastKnownLocation(provider);
-    
-        
-        pass.setLongitude(location.getLongitude());
-        pass.setLattitude(location.getLatitude());
-        Log.i("Test", provider);
+		pass.setLongitude(location.getLongitude());
+		pass.setLattitude(location.getLatitude());
 
-        //If record exists, remove record
-        //if record doesn't exist, add record
-        if(users == null || users.isEmpty()){
-        	  Log.i("Test", "Empty users");
-        	  users = new HashSet<String>();
-        	  users.add(ndefinput);
-        }else if(users.contains(ndefinput)==true){
-        	pass.setAction("Leaving");
-        	Log.i("Test", "User Present");
-        	try{  
-            	Socket s = new Socket("128.237.124.135",3000);  
-            	OutputStream os = s.getOutputStream();
-            	//ObjectOutputStream oos = new ObjectOutputStream(os);  
-            	SecretKey key64 = new SecretKeySpec( new byte[] { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07 }, "Blowfish" );
-            	Cipher cipher = Cipher.getInstance( "Blowfish" );
+		// If record exists, remove record
+		// if record doesn't exist, add record
+		if (users == null || users.isEmpty()) {
+			Log.i("Test", "Empty users");
+			users = new HashSet<String>();
 
-            	//Code to write your object to file
-            	cipher.init( Cipher.ENCRYPT_MODE, key64 );
-            	
-            	SealedObject sealedObject = new SealedObject(pass.getId()+":"+pass.getAction()+":"+pass.getLattitude()+":"+pass.getLongitude(), cipher);
-            	//CipherOutputStream cipherOutputStream = new CipherOutputStream( os, cipher );
-            	ObjectOutputStream outputStream = new ObjectOutputStream( os );
-            	outputStream.writeObject( sealedObject );
-            	outputStream.flush();
-            	//outputStream.close();
-            	//ObjectOutputStream oos = new ObjectOutputStream(os);  
-            	//oos.writeObject(pass.getId()+":"+pass.getAction()+":"+pass.getLattitude()+":"+pass.getLongitude());
-            	
-            	//oos.close();  
-            	//os.close();  
-            	//s.close(); 
-            	 
-            	}catch(Exception e){System.out.println(e);}
-        	users.remove(ndefinput);
-        	
-        } else{
-        	Log.i("Test", "User not present");
-        	pass.setAction("Authenticating");
-        	int authresult=0;
-        	try{  
-            	Socket s = new Socket("128.237.124.135",3000);
-            	OutputStream os = s.getOutputStream();  
-            	InputStream is = s.getInputStream();
-            	//ObjectOutputStream oos = new ObjectOutputStream(os);  
-            	SecretKey key64 = new SecretKeySpec( new byte[] { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07 }, "Blowfish" );
-            	Cipher cipher = Cipher.getInstance( "Blowfish" );
+			Log.i("Test", "User not present");
+			pass.setAction("Authenticating");
+			int authresult = 0;
+			try {
+				Socket s = new Socket("128.237.124.135", 3000);
+				OutputStream os = s.getOutputStream();
+				InputStream is = s.getInputStream();
+				// ObjectOutputStream oos = new ObjectOutputStream(os);
+				SecretKey key64 = new SecretKeySpec(new byte[] { 0x00, 0x01,
+						0x02, 0x03, 0x04, 0x05, 0x06, 0x07 }, "Blowfish");
+				Cipher cipher = Cipher.getInstance("Blowfish");
 
-            	//Code to write your object to file
-            	cipher.init( Cipher.ENCRYPT_MODE, key64 );
-            	
-            	SealedObject sealedObject = new SealedObject(pass.getId()+":"+pass.getAction()+":"+pass.getLattitude()+":"+pass.getLongitude(), cipher);
-            	//CipherOutputStream cipherOutputStream = new CipherOutputStream( os, cipher );
-            	ObjectOutputStream outputStream = new ObjectOutputStream( os);
-            	outputStream.writeObject( sealedObject );
-            	outputStream.flush();
-            	//outputStream.close();
-            	
+				// Code to write your object to file
+				cipher.init(Cipher.ENCRYPT_MODE, key64);
 
-            	ObjectInputStream ois = new ObjectInputStream(is);
-            	//oos.writeObject(pass.getId()+":"+pass.getAction()+":"+pass.getLattitude()+":"+pass.getLongitude()); 
-       
-            	
+				SealedObject sealedObject = new SealedObject(pass.getId() + ":"
+						+ pass.getAction() + ":" + pass.getLattitude() + ":"
+						+ pass.getLongitude(), cipher);
+				// CipherOutputStream cipherOutputStream = new
+				// CipherOutputStream( os, cipher );
+				ObjectOutputStream outputStream = new ObjectOutputStream(os);
+				outputStream.writeObject(sealedObject);
+				outputStream.flush();
+				// outputStream.close();
+
+				ObjectInputStream ois = new ObjectInputStream(is);
+				// oos.writeObject(pass.getId()+":"+pass.getAction()+":"+pass.getLattitude()+":"+pass.getLongitude());
+
 				authresult = (Integer) ois.readObject();
-     
-            	 
-            	}catch(Exception e){System.out.println(e);}
-        	if(authresult>0){
-        		users.add(ndefinput);
-        	}else System.out.println("User not Found\n");
-        }
-        
-       
-        Log.i("Test", "Added Objects");
 
-        mInfoText.setText("");
-        for ( String s : users)  
-        {  
-            mInfoText.append(s +"\n" + location.toString() +"\n");  
-        } 
-       SharedPreferences.Editor editor = settings.edit();
-       editor.putStringSet(KEY,users);
-       editor.commit();
-       Log.i("Test", " "+users.size());
-        
-        // record 0 contains the MIME type, record 1 is the AAR, if present
-       // mInfoText.setText(new String(msg.getRecords()[0].getPayload()));
-       // mInfoText.append(locationGPS.toString());
-    }
+			} catch (Exception e) {
+				System.out.println(e);
+			}
+			if (authresult > 0) {
+				users.add(ndefinput);
+			} else
+				System.out.println("User not Found\n");
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // If NFC is not available, we won't be needing this menu
-        if (mNfcAdapter == null) {
-            return super.onCreateOptionsMenu(menu);
-        }
-        MenuInflater inflater = getMenuInflater();
-        inflater.inflate(R.menu.options, menu);
-        return true;
-    }
+		} else if (users.contains(ndefinput) == true) {
+			pass.setAction("Leaving");
+			Log.i("Test", "User Present");
+			try {
+				Socket s = new Socket("128.237.124.135", 3000);
+				OutputStream os = s.getOutputStream();
+				// ObjectOutputStream oos = new ObjectOutputStream(os);
+				SecretKey key64 = new SecretKeySpec(new byte[] { 0x00, 0x01,
+						0x02, 0x03, 0x04, 0x05, 0x06, 0x07 }, "Blowfish");
+				Cipher cipher = Cipher.getInstance("Blowfish");
 
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case R.id.menu_settings:
-                Intent intent = new Intent(Settings.ACTION_NFCSHARING_SETTINGS);
-                startActivity(intent);
-                return true;
-            default:
-                return super.onOptionsItemSelected(item);
-        }
-    }
+				// Code to write your object to file
+				cipher.init(Cipher.ENCRYPT_MODE, key64);
+
+				SealedObject sealedObject = new SealedObject(pass.getId() + ":"
+						+ pass.getAction() + ":" + pass.getLattitude() + ":"
+						+ pass.getLongitude(), cipher);
+				// CipherOutputStream cipherOutputStream = new
+				// CipherOutputStream( os, cipher );
+				ObjectOutputStream outputStream = new ObjectOutputStream(os);
+				outputStream.writeObject(sealedObject);
+				outputStream.flush();
+				// outputStream.close();
+				// ObjectOutputStream oos = new ObjectOutputStream(os);
+				// oos.writeObject(pass.getId()+":"+pass.getAction()+":"+pass.getLattitude()+":"+pass.getLongitude());
+
+				// oos.close();
+				// os.close();
+				// s.close();
+
+			} catch (Exception e) {
+				System.out.println(e);
+			}
+			users.remove(ndefinput);
+
+		} else {
+			Log.i("Test", "User not present");
+			pass.setAction("Authenticating");
+			int authresult = 0;
+			try {
+				Socket s = new Socket("128.237.124.135", 3000);
+				OutputStream os = s.getOutputStream();
+				InputStream is = s.getInputStream();
+				// ObjectOutputStream oos = new ObjectOutputStream(os);
+				SecretKey key64 = new SecretKeySpec(new byte[] { 0x00, 0x01,
+						0x02, 0x03, 0x04, 0x05, 0x06, 0x07 }, "Blowfish");
+				Cipher cipher = Cipher.getInstance("Blowfish");
+
+				// Code to write your object to file
+				cipher.init(Cipher.ENCRYPT_MODE, key64);
+
+				SealedObject sealedObject = new SealedObject(pass.getId() + ":"
+						+ pass.getAction() + ":" + pass.getLattitude() + ":"
+						+ pass.getLongitude(), cipher);
+				// CipherOutputStream cipherOutputStream = new
+				// CipherOutputStream( os, cipher );
+				ObjectOutputStream outputStream = new ObjectOutputStream(os);
+				outputStream.writeObject(sealedObject);
+				outputStream.flush();
+				// outputStream.close();
+
+				ObjectInputStream ois = new ObjectInputStream(is);
+				// oos.writeObject(pass.getId()+":"+pass.getAction()+":"+pass.getLattitude()+":"+pass.getLongitude());
+
+				authresult = (Integer) ois.readObject();
+
+			} catch (Exception e) {
+				System.out.println(e);
+			}
+			if (authresult > 0) {
+				users.add(ndefinput);
+			} else
+				System.out.println("User not Found\n");
+		}
+
+		Log.i("Test", "Added Objects");
+
+		mInfoText.setText("");
+		for (String s : users) {
+			mInfoText.append(s + "\n" + location.toString() + "\n");
+		}
+		SharedPreferences.Editor editor = settings.edit();
+		editor.putStringSet(KEY, users).commit();
+		Log.i("Test", " " + users.size());
+
+		// record 0 contains the MIME type, record 1 is the AAR, if present
+		// mInfoText.setText(new String(msg.getRecords()[0].getPayload()));
+		// mInfoText.append(locationGPS.toString());
+	}
+
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		// If NFC is not available, we won't be needing this menu
+		if (mNfcAdapter == null) {
+			return super.onCreateOptionsMenu(menu);
+		}
+		MenuInflater inflater = getMenuInflater();
+		inflater.inflate(R.menu.options, menu);
+		return true;
+	}
+
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		switch (item.getItemId()) {
+		case R.id.menu_settings:
+			Intent intent = new Intent(Settings.ACTION_NFCSHARING_SETTINGS);
+			startActivity(intent);
+			return true;
+		default:
+			return super.onOptionsItemSelected(item);
+		}
+	}
+
+	@Override
+	public void onLocationChanged(Location loc) {
+
+		currentLocation = new Location(loc);
+
+		SharedPreferences settings = getApplicationContext()
+				.getSharedPreferences(USER_APP_PREF_DATA, 0);
+		settings.edit().putString(LATITUDE, "" + loc.getLatitude()).commit();
+		settings.edit().putString(LONGITUDE, "" + loc.getLongitude()).commit();
+
+		String message = "Longitude: " + currentLocation.getLongitude()
+				+ " Latitude: " + currentLocation.getLatitude();
+		// Toast.makeText(Beam.this, message, Toast.LENGTH_LONG).show();
+	}
+
+	@Override
+	public void onStatusChanged(String s, int i, Bundle b) {
+		Toast.makeText(Beam.this, "Provider status changed", Toast.LENGTH_LONG)
+				.show();
+	}
+
+	@Override
+	public void onProviderDisabled(String s) {
+		Toast.makeText(Beam.this,
+				"Provider disabled by the user. GPS turned off",
+				Toast.LENGTH_LONG).show();
+	}
+
+	@Override
+	public void onProviderEnabled(String s) {
+		Toast.makeText(Beam.this,
+				"Provider enabled by the user. GPS turned on",
+				Toast.LENGTH_LONG).show();
+	}
 }

@@ -78,11 +78,11 @@ public class MainActivity extends Activity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.main);
-		
+
 		Log.i("BEAM", "Main Activity");
 
 		String path = Environment.getExternalStorageDirectory().toString()
-				+ "/gpx/course.gpx";
+				+ "/gpx/61S.gpx";
 
 		TextView textInfo = (TextView) findViewById(R.id.textView);
 		String info = "";
@@ -124,7 +124,7 @@ public class MainActivity extends Activity {
 	private void setupMockLocationProvider() {
 		mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 		if (mLocationManager.getProvider(PROVIDER_NAME) != null) {
-			mLocationManager.removeTestProvider(PROVIDER_NAME);
+			// mLocationManager.removeTestProvider(PROVIDER_NAME);
 		}
 
 		mLocationManager.addTestProvider(PROVIDER_NAME, true, // requiresNetwork,
